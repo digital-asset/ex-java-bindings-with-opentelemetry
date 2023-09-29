@@ -1,3 +1,6 @@
+// Copyright (c) 2023 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+// SPDX-License-Identifier: 0BSD
+
 package examples.pingpong.codegen;
 
 import com.daml.ledger.api.v1.TraceContextOuterClass.TraceContext;
