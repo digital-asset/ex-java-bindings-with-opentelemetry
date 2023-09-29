@@ -27,7 +27,11 @@ mvn compile
 
 # Could also run this manually in another terminal without the redirects
 echo "Starting sandbox"
-daml start --start-navigator false --sandbox-port 7600 > sandbox.log 2>&1 & PID=$!
+daml start --start-navigator false \
+     --sandbox-port 7600 \
+     --sandbox-option="-C" \
+     --sandbox-option="canton.monitoring.tracing.tracer.exporter.type=jaeger" \
+       > sandbox.log 2>&1 & PID=$!
 
 
 while [[ "$(getSandboxPid)" -eq '' ]]
