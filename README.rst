@@ -4,7 +4,7 @@ Java Bindings Example
 ::
 
   Copyright (c) 2023 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
-  SPDX-License-Identifier: Apache-2.0.0
+  SPDX-License-Identifier: 0BSD
 
 
 This is an example of how a Java application would use the `Java Binding library <https://docs.daml.com/app-dev/bindings-java/index.html>`_ to connect to and exercise a DAML model running on a ledger. Since there are three levels of interface available, this example builds a similar application with all three levels.
