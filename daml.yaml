@@ -1,7 +1,7 @@
 # Copyright (c) 2023 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
 # SPDX-License-Identifier: 0BSD
 
-sdk-version: 2.8.0
+sdk-version: 2.10.1
 name: ex-java-bindings
 source: daml/PingPong.daml
 init-script: PingPong:setup
