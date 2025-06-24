@@ -31,7 +31,7 @@ To set a project up:
 
 #. If you do not have it already, install the DAML SDK by running::
 
-   curl https://get.daml.com | sh -s 2.7.0
+   curl https://get.daml.com | sh -s 2.10.1
 
 #. Use the start script for starting a ledger & the java application:
 
