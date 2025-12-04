@@ -31,11 +31,26 @@ To set a project up:
 
 #. If you do not have it already, install the DAML SDK by running::
 
-   curl https://get.daml.com | sh -s 2.10.1
+   curl -sSL https://get.digitalasset.com/install/install.sh | sh -s 3.4.9
+
+#. Launch an OTLP server
+
+  docker run --rm -d \
+    -p 127.0.0.1:4317:4317 \
+    -p 127.0.0.1:4318:4318 \
+    -p 127.0.0.1:55679:55679 \
+    --name otlp \
+    otel/opentelemetry-collector-contrib:0.141.0
 
 #. Use the start script for starting a ledger & the java application:
 
   ./start.sh
+
+#. Check if the OTLP server has received the traces from Canton
+
+  docker logs otlp 2>&1 | grep -E '^Span|(ID|Name|Kind|time|Status \w+)\s+:'
+
+  Verify that the spans reported by the `start.sh` step appear in the log dump above.
 
 Example Project -- Ping Pong with Generated Java Data Layer
 -----------------------------------------------------------

@@ -38,6 +38,7 @@ dpm sandbox \
   --canton-port-file ports.json \
   --dar main/.daml/dist/ex-java-bindings-0.0.2.dar \
   -C canton.monitoring.tracing.tracer.exporter.type=otlp \
+  -C canton.monitoring.tracing.tracer.exporter.port=4317 \
        > sandbox.log 2>&1 & PID=$!
 
 echo "Waiting for sandbox to write the port file"
