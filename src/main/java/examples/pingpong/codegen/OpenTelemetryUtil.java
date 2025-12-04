@@ -3,7 +3,7 @@
 
 package examples.pingpong.codegen;
 
-import com.daml.ledger.api.v1.TraceContextOuterClass.TraceContext;
+import com.daml.ledger.api.v2.TraceContextOuterClass.TraceContext;
 import io.grpc.ManagedChannelBuilder;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.Attributes;
@@ -117,9 +117,9 @@ public class OpenTelemetryUtil {
             private Map<String, String> toMap(TraceContext traceContext) {
                 return Map.of(
                         TRACEPARENT_HEADER_NAME,
-                        traceContext.getTraceparent().getValue(),
+                        traceContext.getTraceparent(),
                         TRACESTATE_HEADER_NAME,
-                        traceContext.getTracestate().getValue()
+                        traceContext.getTracestate()
                 );
             }
         };

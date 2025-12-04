@@ -1,14 +1,14 @@
-// Copyright (c) 2023 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
-// SPDX-License-Identifier: 0BSD
+// Copyright (c) 2025 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 package examples.pingpong.codegen;
 
-import com.daml.ledger.api.v1.*;
-import com.daml.ledger.api.v1.CommandSubmissionServiceGrpc.CommandSubmissionServiceBlockingStub;
-import com.daml.ledger.api.v1.EventOuterClass.Event;
-import com.daml.ledger.api.v1.TransactionOuterClass.Transaction;
-import com.daml.ledger.api.v1.TransactionServiceGrpc.TransactionServiceStub;
-import com.daml.ledger.api.v1.TransactionServiceOuterClass.GetTransactionsResponse;
+import com.daml.ledger.api.v2.*;
+import com.daml.ledger.api.v2.CommandSubmissionServiceGrpc.CommandSubmissionServiceBlockingStub;
+import com.daml.ledger.api.v2.EventOuterClass.Event;
+import com.daml.ledger.api.v2.TransactionOuterClass.Transaction;
+import com.daml.ledger.api.v2.UpdateServiceGrpc.UpdateServiceStub;
+import com.daml.ledger.api.v2.UpdateServiceOuterClass.GetUpdatesResponse;
 import com.daml.ledger.javaapi.data.*;
 import com.daml.ledger.javaapi.data.codegen.Contract;
 import com.daml.ledger.javaapi.data.codegen.ContractCompanion;
@@ -20,10 +20,7 @@ import io.grpc.ManagedChannel;
 import io.grpc.stub.StreamObserver;
 import io.opentelemetry.context.Context;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -34,9 +31,8 @@ import java.util.stream.Stream;
 public class PingPongProcessor {
 
     private final String party;
-    private final String ledgerId;
 
-    private final TransactionServiceStub transactionService;
+    private final UpdateServiceStub transactionService;
     private final CommandSubmissionServiceBlockingStub submissionService;
 
     private final Identifier pingIdentifier;
@@ -44,10 +40,9 @@ public class PingPongProcessor {
 
     private final OpenTelemetryUtil openTelemetry;
 
-    public PingPongProcessor(String party, String ledgerId, ManagedChannel channel, OpenTelemetryUtil openTelemetry) {
+    public PingPongProcessor(String party, ManagedChannel channel, OpenTelemetryUtil openTelemetry) {
         this.party = party;
-        this.ledgerId = ledgerId;
-        this.transactionService = TransactionServiceGrpc.newStub(channel);
+        this.transactionService = UpdateServiceGrpc.newStub(channel);
         this.submissionService = CommandSubmissionServiceGrpc.newBlockingStub(channel);
         this.pingIdentifier = Ping.TEMPLATE_ID;
         this.pongIdentifier = Pong.TEMPLATE_ID;
@@ -56,23 +51,38 @@ public class PingPongProcessor {
 
     public void runIndefinitely() {
         // restrict the subscription to ping and pong template types through an inclusive filter
-        final var inclusiveFilter = InclusiveFilter
-                .ofTemplateIds(Set.of(pingIdentifier, pongIdentifier));
+        final var inclusiveFilter = new CumulativeFilter(
+                Collections.emptyMap(),
+                Map.of(pingIdentifier, Filter.Template.HIDE_CREATED_EVENT_BLOB, pongIdentifier, Filter.Template.HIDE_CREATED_EVENT_BLOB),
+                Optional.empty());
         // specify inclusive filter for the party attached to this processor
-        final var filtersByParty = new FiltersByParty(Map.of(party, inclusiveFilter));
-        // assemble the request for the transaction stream
-        final var getTransactionsRequest = new GetTransactionsRequest(
-                ledgerId,
-                LedgerOffset.LedgerBegin.getInstance(),
-                filtersByParty,
+        final var eventFormat = new EventFormat(
+                Map.of(party, inclusiveFilter),
+                Optional.empty(),
                 true
+        );
+        final var includeTransactions = new TransactionFormat(
+                eventFormat,
+                TransactionShape.ACS_DELTA
+        );
+        final var updateFormat = new UpdateFormat(
+                Optional.of(includeTransactions),
+                Optional.empty(),
+                Optional.empty()
+        );
+        // assemble the request for the transaction stream
+        final var GetUpdatesRequest = new GetUpdatesRequest(
+                0L,
+                Optional.empty(),
+                updateFormat
         );
 
         // this StreamObserver reacts to transactions and prints a message if an error occurs or the stream gets closed
-        StreamObserver<GetTransactionsResponse> transactionObserver = new StreamObserver<>() {
+        StreamObserver<GetUpdatesResponse> transactionObserver = new StreamObserver<>() {
             @Override
-            public void onNext(GetTransactionsResponse value) {
-                value.getTransactionsList().forEach(PingPongProcessor.this::processTransaction);
+            public void onNext(GetUpdatesResponse value) {
+                if(value.hasTransaction())
+                    processTransaction(value.getTransaction());
             }
 
             @Override
@@ -87,7 +97,7 @@ public class PingPongProcessor {
             }
         };
         System.out.printf("%s starts reading transactions.\n", party);
-        transactionService.getTransactions(getTransactionsRequest.toProto(), transactionObserver);
+        transactionService.getUpdates(GetUpdatesRequest.toProto(), transactionObserver);
     }
 
     /**
@@ -98,13 +108,14 @@ public class PingPongProcessor {
     private void processTransaction(Transaction tx) {
         List<Command> commands = tx.getEventsList().stream()
                 .filter(Event::hasCreated).map(Event::getCreated)
-                .flatMap(e -> processEvent(tx.getWorkflowId(), tx.getTraceContext().getTraceparent().getValue(), e))
+                .flatMap(e -> processEvent(tx.getWorkflowId(), tx.getTraceContext().getTraceparent(), e))
                 .collect(Collectors.toList());
 
         if (!commands.isEmpty()) {
             CommandsSubmission commandsSubmission = CommandsSubmission.create(
                             PingPongMain.APP_ID,
                             UUID.randomUUID().toString(),
+                            Optional.empty(),
                             commands)
                     .withActAs(List.of(party))
                     .withReadAs(List.of(party))
@@ -112,7 +123,7 @@ public class PingPongProcessor {
             Context extractedContext = openTelemetry.contextFromDamlTraceContext(tx.getTraceContext());
             openTelemetry.runInOpenTelemetryScope(extractedContext, () ->
                     openTelemetry.runInNewSpan("follow", () ->
-                            submissionService.submit(SubmitRequest.toProto(ledgerId, commandsSubmission))
+                            submissionService.submit(SubmitRequest.toProto(commandsSubmission))
                     )
             );
         }
