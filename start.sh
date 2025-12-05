@@ -5,33 +5,51 @@ function getSandboxPid(){
     ss -lptn 'sport = :7575' | grep -P -o '(?<=pid=)([0-9]+)'
 }
 function cleanup(){
+    echo "Cleaning up"
     sandboxPID=$(ss -lptn 'sport = :7575' | grep -P -o '(?<=pid=)([0-9]+)')
     if [[ $sandboxPID ]]; then
         # kill the sandbox which is running in the background
         kill $sandboxPID
+        rm ports.json
+        echo "Done"
     fi
 }
 
 trap cleanup ERR EXIT
 
 echo "Compiling daml"
-daml build
-packageId=$(daml damlc inspect-dar --json .daml/dist/ex-java-bindings-0.0.2.dar | jq '.main_package_id' -r)
+dpm build --all
 
+pushd main
+packageId=$(dpm damlc inspect-dar --json .daml/dist/ex-java-bindings-0.0.2.dar | jq '.main_package_id' -r)
 
 echo "Generating java code"
-daml codegen java
+dpm codegen-java
+popd
 
 echo "Compiling code"
 mvn compile
 
 # Could also run this manually in another terminal without the redirects
 echo "Starting sandbox"
-daml start --start-navigator false \
-     --sandbox-port 7600 \
-     --sandbox-option="-C" \
-     --sandbox-option="canton.monitoring.tracing.tracer.exporter.type=jaeger" \
+dpm sandbox \
+  --ledger-api-port 7600 \
+  --json-api-port 7575 \
+  --canton-port-file ports.json \
+  --dar main/.daml/dist/ex-java-bindings-0.0.2.dar \
+  -C canton.monitoring.tracing.tracer.exporter.type=otlp \
+  -C canton.monitoring.tracing.tracer.exporter.port=4317 \
        > sandbox.log 2>&1 & PID=$!
+
+echo "Waiting for sandbox to write the port file"
+until [ -e ports.json ]; do sleep 1; done
+
+echo "Running the script"
+dpm script \
+  --dar script/.daml/dist/ex-java-bindings-script-0.0.2.dar \
+  --ledger-host localhost \
+  --ledger-port 7600 \
+  --script-name PingPongTest:setup
 
 
 while [[ "$(getSandboxPid)" -eq '' ]]
